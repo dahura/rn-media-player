@@ -11,6 +11,11 @@ import {
   Text,
   View,
 } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 import transcript from "@/assets/transcript.json";
 
@@ -30,6 +35,12 @@ export default function PlayerScreen() {
     useAudioController(require("@/assets/example_audio.mp3"));
 
   const firstSpeakerName = transcript.speakers?.[0]?.name ?? "";
+
+  // Animated overlay width for active phrase
+  const overlayWidthSV = useSharedValue(0);
+  const overlayAnimStyle = useAnimatedStyle(() => ({
+    width: overlayWidthSV.value,
+  }));
 
   // Build timeline once
   useEffect(() => {
@@ -97,6 +108,23 @@ export default function PlayerScreen() {
     }
   };
 
+  // Drive animated overlay width when time/index/width changes
+  useEffect(() => {
+    const curr = timeline[activeIndex];
+    if (!curr) {
+      overlayWidthSV.value = withTiming(0, { duration: 80 });
+      return;
+    }
+    const duration = Math.max(1, curr.end - curr.start);
+    const elapsed = Math.max(
+      0,
+      Math.min(duration, (currentMs ?? 0) - curr.start)
+    );
+    const pct = elapsed / duration;
+    const targetWidth = textWidthState.current * pct;
+    overlayWidthSV.value = withTiming(targetWidth, { duration: 80 });
+  }, [activeIndex, currentMs, timeline, overlayWidthSV]);
+
   const renderItem = ({
     item,
     index,
@@ -109,8 +137,6 @@ export default function PlayerScreen() {
       Math.min(phraseDuration, (currentMs ?? 0) - item.start)
     );
     const phraseProgress = isActive ? phraseElapsed / phraseDuration : 0;
-
-    const overlayWidth = textWidthState.current * phraseProgress;
 
     return (
       <View
@@ -151,14 +177,14 @@ export default function PlayerScreen() {
             >
               <Text style={styles.words}>{item.phrase.words}</Text>
               {isActive && (
-                <View
+                <Animated.View
                   pointerEvents="none"
-                  style={[styles.progressTextOverlay, { width: overlayWidth }]}
+                  style={[styles.progressTextOverlay, overlayAnimStyle]}
                 >
                   <Text style={[styles.words, styles.accentText]}>
                     {item.phrase.words}
                   </Text>
-                </View>
+                </Animated.View>
               )}
             </View>
             <View style={styles.repeatIcon} pointerEvents="none">
