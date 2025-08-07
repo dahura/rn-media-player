@@ -125,6 +125,7 @@ export default function PlayerScreen() {
         renderItem={renderItem}
         contentContainerStyle={{ padding: 16, paddingBottom: 220 }}
         initialNumToRender={8}
+        keyboardShouldPersistTaps="always"
       />
 
       <View style={styles.transport}>
@@ -150,7 +151,12 @@ export default function PlayerScreen() {
             accessibilityLabel="Rewind"
           />
 
-          <Pressable onPress={onTogglePlay} style={styles.playBtn} hitSlop={12}>
+          <Pressable
+            onPress={onTogglePlay}
+            style={styles.playBtn}
+            hitSlop={12}
+            accessibilityRole="button"
+          >
             <Image
               source={require("@/assets/play.png")}
               style={{ width: 32, height: 32 }}
@@ -288,6 +294,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 24,
     paddingTop: 2,
+    pointerEvents: "box-none",
   },
   iconBtn: {
     padding: 12,
