@@ -150,10 +150,10 @@ export default function PlayerScreen() {
             accessibilityLabel="Rewind"
           />
 
-          <Pressable onPress={onTogglePlay} style={styles.playBtn}>
+          <Pressable onPress={onTogglePlay} style={styles.playBtn} hitSlop={12}>
             <Image
               source={require("@/assets/play.png")}
-              style={{ width: 28, height: 28 }}
+              style={{ width: 32, height: 32 }}
               contentFit="contain"
             />
           </Pressable>
@@ -187,6 +187,7 @@ function IconImageButton({
       onPress={onPress}
       accessibilityLabel={accessibilityLabel}
       style={styles.iconBtn}
+      hitSlop={10}
     >
       <Image
         source={source}
@@ -264,6 +265,8 @@ const styles = StyleSheet.create({
     borderTopColor: "#E3E3FF",
     borderTopWidth: 1,
     gap: 12,
+    zIndex: 1000,
+    elevation: 20,
   },
   progressTrack: {
     height: 6,
@@ -290,6 +293,8 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     backgroundColor: "#ECEEFF",
+    alignItems: "center",
+    justifyContent: "center",
   },
   playBtn: {
     width: 64,
