@@ -14,7 +14,7 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
-    Outfit_600SemiBold: require("@expo-google-fonts/outfit/Outfit_600SemiBold.ttf"),
+    Outfit_600SemiBold: require("../assets/fonts/outfit/OutfitSemiBold.ttf"),
   });
 
   if (!loaded) {

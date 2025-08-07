@@ -52,7 +52,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const found = timeline.findIndex(
         (t) => currentMs >= t.start && currentMs < t.end
       );
-      activeIndex = found === -1 ? timeline.length - 1 : found;
+      if (found !== -1) {
+        activeIndex = found;
+      } else {
+        if (currentMs < timeline[0].start) {
+          activeIndex = 0;
+        } else if (currentMs >= timeline[timeline.length - 1].end) {
+          activeIndex = timeline.length - 1;
+        } else {
+          const nextIdx = timeline.findIndex((t) => currentMs < t.start);
+          activeIndex = Math.max(0, nextIdx - 1);
+        }
+      }
     }
     set({ currentMs, activeIndex });
   },

@@ -1,6 +1,6 @@
 import { useAudioController } from "@/hooks/useAudioController";
 import { usePlayerStore } from "@/store/player";
-import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef } from "react";
 import {
   FlatList,
@@ -50,8 +50,21 @@ export default function PlayerScreen() {
 
   const onPressRewind = () => {
     if (!timeline.length) return;
-    const target = timeline[Math.max(0, activeIndex - 1)];
-    if (target) rewindToPhraseStart(target.start);
+    const curr = timeline[activeIndex];
+    if (!curr) return;
+    const thresholdMs = 300;
+    if ((currentMs ?? 0) > curr.start + thresholdMs) {
+      // Restart current phrase and play
+      rewindToPhraseStart(curr.start);
+      play();
+    } else {
+      // Jump to previous phrase start (or stay at first) and play
+      const prev = timeline[Math.max(0, activeIndex - 1)];
+      if (prev) {
+        rewindToPhraseStart(prev.start);
+        play();
+      }
+    }
   };
 
   const onPressForward = () => {
@@ -63,13 +76,26 @@ export default function PlayerScreen() {
     }
   };
 
-  const onPressRepeat = () => {
-    const t = timeline[activeIndex];
-    if (t) repeatLastPhrase(t.start, t.end);
-  };
+  // repeat control moved into each bubble
 
   const totalMs = timeline.length ? timeline[timeline.length - 1].end : 1;
   const progress = Math.max(0, Math.min(1, (currentMs ?? 0) / totalMs));
+
+  // Measure text width to drive overlay width
+  const textWidthState = React.useRef(0);
+  const [, force] = React.useReducer((c) => c + 1, 0);
+
+  const setMeasuredWidthIfActive = (
+    index: number,
+    width: number,
+    active: boolean
+  ) => {
+    if (!active) return;
+    if (Math.abs(textWidthState.current - width) > 0.5) {
+      textWidthState.current = width;
+      force();
+    }
+  };
 
   const renderItem = ({
     item,
@@ -77,6 +103,15 @@ export default function PlayerScreen() {
   }: ListRenderItemInfo<(typeof timeline)[number]>) => {
     const isActive = index === activeIndex;
     const isInitiator = item.phrase.speaker === firstSpeakerName;
+    const phraseDuration = Math.max(1, item.end - item.start);
+    const phraseElapsed = Math.max(
+      0,
+      Math.min(phraseDuration, (currentMs ?? 0) - item.start)
+    );
+    const phraseProgress = isActive ? phraseElapsed / phraseDuration : 0;
+
+    const overlayWidth = textWidthState.current * phraseProgress;
+
     return (
       <View
         style={[
@@ -93,17 +128,44 @@ export default function PlayerScreen() {
         >
           {item.phrase.speaker}
         </Text>
-        <View
+        <Pressable
+          onPress={() => repeatLastPhrase(item.start, item.end)}
+          accessibilityRole="button"
+          accessibilityLabel="Repeat slowly"
           style={[
             styles.bubble,
             isInitiator ? styles.leftBubble : styles.rightBubble,
             isActive && styles.activeBubble,
           ]}
         >
-          <Text style={[styles.words, isActive && styles.activeWords]}>
-            {item.phrase.words}
-          </Text>
-        </View>
+          <View style={styles.bubbleInner}>
+            <View
+              style={styles.progressTextWrapper}
+              onLayout={(e) =>
+                setMeasuredWidthIfActive(
+                  index,
+                  e.nativeEvent.layout.width,
+                  isActive
+                )
+              }
+            >
+              <Text style={styles.words}>{item.phrase.words}</Text>
+              {isActive && (
+                <View
+                  pointerEvents="none"
+                  style={[styles.progressTextOverlay, { width: overlayWidth }]}
+                >
+                  <Text style={[styles.words, styles.accentText]}>
+                    {item.phrase.words}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.repeatIcon} pointerEvents="none">
+              <Ionicons name="volume-high" size={18} color={TEXT} />
+            </View>
+          </View>
+        </Pressable>
       </View>
     );
   };
@@ -125,7 +187,6 @@ export default function PlayerScreen() {
         renderItem={renderItem}
         contentContainerStyle={{ padding: 16, paddingBottom: 220 }}
         initialNumToRender={8}
-        keyboardShouldPersistTaps="always"
       />
 
       <View style={styles.transport}>
@@ -145,46 +206,37 @@ export default function PlayerScreen() {
         </View>
 
         <View style={styles.controlsRow}>
-          <IconImageButton
-            source={require("@/assets/rewind.png")}
+          <IconButton
+            name="play-back"
             onPress={onPressRewind}
             accessibilityLabel="Rewind"
           />
 
-          <Pressable
-            onPress={onTogglePlay}
-            style={styles.playBtn}
-            hitSlop={12}
-            accessibilityRole="button"
-          >
-            <Image
-              source={require("@/assets/play.png")}
-              style={{ width: 32, height: 32 }}
-              contentFit="contain"
-            />
+          <Pressable onPress={onTogglePlay} style={styles.playBtn} hitSlop={12}>
+            {isPlaying ? (
+              <Ionicons name="pause" size={32} color={TEXT} />
+            ) : (
+              <Ionicons name="play" size={32} color={TEXT} />
+            )}
           </Pressable>
 
-          <IconImageButton
-            source={require("@/assets/fast-forward.png")}
+          <IconButton
+            name="play-forward"
             onPress={onPressForward}
             accessibilityLabel="Forward"
           />
-
-          <Pressable onPress={onPressRepeat} style={styles.smallTextBtn}>
-            <Text style={styles.smallTextBtnLabel}>0.75x</Text>
-          </Pressable>
         </View>
       </View>
     </SafeAreaView>
   );
 }
 
-function IconImageButton({
-  source,
+function IconButton({
+  name,
   onPress,
   accessibilityLabel,
 }: {
-  source: number;
+  name: React.ComponentProps<typeof Ionicons>["name"];
   onPress: () => void;
   accessibilityLabel?: string;
 }) {
@@ -195,11 +247,7 @@ function IconImageButton({
       style={styles.iconBtn}
       hitSlop={10}
     >
-      <Image
-        source={source}
-        style={{ width: 26, height: 26 }}
-        contentFit="contain"
-      />
+      <Ionicons name={name} size={26} color={TEXT} />
     </Pressable>
   );
 }
@@ -229,23 +277,27 @@ const styles = StyleSheet.create({
   bubble: {
     maxWidth: 283,
     width: 283,
-    minHeight: 41,
-    paddingTop: 10,
-    paddingBottom: 10,
+    minHeight: 52,
+    paddingVertical: 16,
     paddingHorizontal: 8,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#EEE",
+    borderColor: "#F2EEF6",
     backgroundColor: "#FFF",
+  },
+  bubbleInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   activeBubble: {
     width: 283,
-    minHeight: 51,
+    minHeight: 52,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: ACCENT,
-    paddingTop: 4,
-    paddingBottom: 4,
+    backgroundColor: "#E1E4FF",
+    paddingVertical: 16,
+    paddingHorizontal: 8,
   },
   leftBubble: { alignSelf: "flex-start" },
   rightBubble: { alignSelf: "flex-end" },
@@ -256,8 +308,31 @@ const styles = StyleSheet.create({
     letterSpacing: -0.17,
     fontFamily: "Outfit_600SemiBold",
     fontWeight: "600",
+    flex: 1,
+    flexWrap: "wrap",
   },
-  activeWords: { color: ACCENT },
+  accentText: { color: ACCENT },
+  progressTextWrapper: {
+    flex: 1,
+    position: "relative",
+  },
+  progressTextOverlay: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    overflow: "hidden",
+  },
+  repeatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#ECEEFF",
+    borderWidth: 1,
+    borderColor: "#DDDFFE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   // Transport
   transport: {
     position: "absolute",
@@ -294,7 +369,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 24,
     paddingTop: 2,
-    pointerEvents: "box-none",
   },
   iconBtn: {
     padding: 12,
@@ -313,19 +387,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#D9DAFF",
   },
-  smallTextBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: "#ECEEFF",
-    borderWidth: 1,
-    borderColor: "#DDDFFE",
+  pauseIcon: {
+    width: 32,
+    height: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  smallTextBtnLabel: {
-    color: TEXT,
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: -0.14,
+  pauseBar: {
+    width: 6,
+    height: 22,
+    borderRadius: 2,
+    backgroundColor: TEXT,
+    marginHorizontal: 3,
   },
   timeText: {
     width: 60,
