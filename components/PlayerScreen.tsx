@@ -14,7 +14,6 @@ import {
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
 } from "react-native-reanimated";
 
 import transcript from "@/assets/transcript.json";
@@ -36,10 +35,12 @@ export default function PlayerScreen() {
 
   const firstSpeakerName = transcript.speakers?.[0]?.name ?? "";
 
-  // Animated overlay width for active phrase
-  const overlayWidthSV = useSharedValue(0);
-  const overlayAnimStyle = useAnimatedStyle(() => ({
-    width: overlayWidthSV.value,
+  // Animated overlay driven by progress and measured width (no artificial delay)
+  const measuredWidthByIndexRef = React.useRef<Record<number, number>>({});
+  const measuredWidthSV = useSharedValue(0);
+  const progressSV = useSharedValue(0);
+  const animatedOverlayStyle = useAnimatedStyle(() => ({
+    width: measuredWidthSV.value * progressSV.value,
   }));
 
   // Build timeline once
@@ -92,27 +93,27 @@ export default function PlayerScreen() {
   const totalMs = timeline.length ? timeline[timeline.length - 1].end : 1;
   const progress = Math.max(0, Math.min(1, (currentMs ?? 0) / totalMs));
 
-  // Measure text width to drive overlay width
-  const textWidthState = React.useRef(0);
-  const [, force] = React.useReducer((c) => c + 1, 0);
-
-  const setMeasuredWidthIfActive = (
+  // Measure and store text width per phrase
+  const handleMeasureWidth = (
     index: number,
     width: number,
-    active: boolean
+    isActive: boolean
   ) => {
-    if (!active) return;
-    if (Math.abs(textWidthState.current - width) > 0.5) {
-      textWidthState.current = width;
-      force();
+    const stored = measuredWidthByIndexRef.current[index];
+    if (Math.abs((stored ?? 0) - width) > 0.5) {
+      measuredWidthByIndexRef.current[index] = width;
+      if (isActive) measuredWidthSV.value = width;
+    } else if (isActive && stored == null) {
+      measuredWidthSV.value = width;
     }
   };
 
-  // Drive animated overlay width when time/index/width changes
+  // Drive progress shared value from audio clock
   useEffect(() => {
     const curr = timeline[activeIndex];
     if (!curr) {
-      overlayWidthSV.value = withTiming(0, { duration: 80 });
+      progressSV.value = 0;
+      measuredWidthSV.value = 0;
       return;
     }
     const duration = Math.max(1, curr.end - curr.start);
@@ -120,10 +121,14 @@ export default function PlayerScreen() {
       0,
       Math.min(duration, (currentMs ?? 0) - curr.start)
     );
-    const pct = elapsed / duration;
-    const targetWidth = textWidthState.current * pct;
-    overlayWidthSV.value = withTiming(targetWidth, { duration: 80 });
-  }, [activeIndex, currentMs, timeline, overlayWidthSV]);
+    progressSV.value = elapsed / duration;
+  }, [activeIndex, currentMs, timeline, progressSV, measuredWidthSV]);
+
+  // When active index changes, immediately set measured width if known
+  useEffect(() => {
+    const known = measuredWidthByIndexRef.current[activeIndex];
+    measuredWidthSV.value = known ?? 0;
+  }, [activeIndex, measuredWidthSV]);
 
   const renderItem = ({
     item,
@@ -168,18 +173,14 @@ export default function PlayerScreen() {
             <View
               style={styles.progressTextWrapper}
               onLayout={(e) =>
-                setMeasuredWidthIfActive(
-                  index,
-                  e.nativeEvent.layout.width,
-                  isActive
-                )
+                handleMeasureWidth(index, e.nativeEvent.layout.width, isActive)
               }
             >
               <Text style={styles.words}>{item.phrase.words}</Text>
               {isActive && (
                 <Animated.View
                   pointerEvents="none"
-                  style={[styles.progressTextOverlay, overlayAnimStyle]}
+                  style={[styles.progressTextOverlay, animatedOverlayStyle]}
                 >
                   <Text style={[styles.words, styles.accentText]}>
                     {item.phrase.words}
@@ -187,9 +188,9 @@ export default function PlayerScreen() {
                 </Animated.View>
               )}
             </View>
-            <View style={styles.repeatIcon} pointerEvents="none">
+            {/* <View style={styles.repeatIcon} pointerEvents="none">
               <Ionicons name="volume-high" size={18} color={TEXT} />
-            </View>
+            </View> */}
           </View>
         </Pressable>
       </View>
