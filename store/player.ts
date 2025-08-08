@@ -21,6 +21,7 @@ export type PlayerState = {
   rate: number;
   timeline: TimelineItem[];
   activeIndex: number; // current phrase index in timeline
+  isFinished: boolean; // NEW: indicates playback reached the end
   loadTimeline: (
     phrasesBySpeaker: {
       name: string;
@@ -43,11 +44,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   rate: 1,
   timeline: [],
   activeIndex: 0,
+  isFinished: false,
   markLoaded: (loaded) => set({ isLoaded: loaded }),
   setPlaying: (isPlaying) => set({ isPlaying }),
   setPosition: (currentMs) => {
     const { timeline } = get();
     let activeIndex = get().activeIndex;
+    let isFinished = false;
+
     if (timeline.length > 0) {
       const found = timeline.findIndex(
         (t) => currentMs >= t.start && currentMs < t.end
@@ -64,14 +68,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           activeIndex = Math.max(0, nextIdx - 1);
         }
       }
+
+      // mark finished if close enough to the end
+      const totalMs = timeline[timeline.length - 1].end;
+      const threshold = 50;
+      isFinished = currentMs >= Math.max(0, totalMs - threshold);
     }
-    set({ currentMs, activeIndex });
+
+    set({ currentMs, activeIndex, isFinished });
   },
   stepToIndex: (index) => {
     const { timeline } = get();
     if (timeline.length === 0) return;
     const clamped = Math.max(0, Math.min(index, timeline.length - 1));
-    set({ activeIndex: clamped, currentMs: timeline[clamped].start });
+    set({
+      activeIndex: clamped,
+      currentMs: timeline[clamped].start,
+      isFinished: false,
+    });
   },
   stepRelative: (delta) => {
     const { activeIndex } = get();
@@ -103,6 +117,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return { phrase, start, end, globalIndex };
     });
 
-    set({ timeline, currentMs: 0, activeIndex: 0, isLoaded: false });
+    set({
+      timeline,
+      currentMs: 0,
+      activeIndex: 0,
+      isLoaded: false,
+      isFinished: false,
+    });
   },
 }));
