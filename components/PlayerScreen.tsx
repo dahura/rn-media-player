@@ -244,8 +244,7 @@ export default function PlayerScreen() {
       {/* Top fade */}
       <LinearGradient
         pointerEvents="none"
-        colors={["rgba(0,0,0,0.12)", "rgba(0,0,0,0.06)", "rgba(0,0,0,0)"]}
-        locations={[0, 0.5, 1]}
+        colors={["#FFFFFF", "#FFFFFF00"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={styles.topFade}
@@ -268,9 +267,12 @@ export default function PlayerScreen() {
         end={{ x: 0, y: 1 }}
         style={styles.bottomFade}
       />
-      <View style={styles.progressTrack}>
+
+      {/* Progress bar above transport (replaces border) */}
+      <View style={styles.progressBarAbove}>
         <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
       </View>
+
       <View style={styles.transport}>
         <View style={styles.transportTopRow}>
           <Text style={styles.timeText}>
@@ -408,7 +410,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 28,
+    height: 64,
     zIndex: 5,
   },
   bottomFade: {
@@ -429,8 +431,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 18,
     backgroundColor: "#F6F6FF",
-    borderTopColor: "#E3E3FF",
-    borderTopWidth: 1,
     gap: 12,
     zIndex: 10,
     elevation: 20,
@@ -444,6 +444,17 @@ const styles = StyleSheet.create({
   progressFill: {
     height: "100%",
     backgroundColor: ACCENT,
+  },
+  progressBarAbove: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 88,
+    height: 6,
+    borderRadius: 6,
+    backgroundColor: "#E8E8FF",
+    overflow: "hidden",
+    zIndex: 6,
   },
   transportTopRow: {
     flexDirection: "row",
