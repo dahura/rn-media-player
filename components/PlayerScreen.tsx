@@ -1,6 +1,7 @@
 import { useAudioController } from "@/hooks/useAudioController";
 import { usePlayerStore } from "@/store/player";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef } from "react";
 import {
   FlatList,
@@ -240,6 +241,15 @@ export default function PlayerScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Top fade */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={["#FFFFFF", "#FFFFFF00"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.topFade}
+      />
+
       <FlatList
         ref={listRef}
         data={timeline}
@@ -247,6 +257,15 @@ export default function PlayerScreen() {
         renderItem={renderItem}
         contentContainerStyle={{ padding: 16, paddingBottom: 220 }}
         initialNumToRender={8}
+      />
+
+      {/* Bottom fade above transport */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={["#FFFFFF00", "#FFFFFF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.bottomFade}
       />
 
       <View style={styles.transport}>
@@ -382,16 +401,24 @@ const styles = StyleSheet.create({
     bottom: 0,
     overflow: "hidden",
   },
-  repeatIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#ECEEFF",
-    borderWidth: 1,
-    borderColor: "#DDDFFE",
-    alignItems: "center",
-    justifyContent: "center",
+  // Gradient fades
+  topFade: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 64,
+    zIndex: 5,
   },
+  bottomFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 88, // sit above transport area
+    height: 64,
+    zIndex: 5,
+  },
+  // Transport
   transport: {
     position: "absolute",
     left: 0,
@@ -404,7 +431,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#E3E3FF",
     borderTopWidth: 1,
     gap: 12,
-    zIndex: 1000,
+    zIndex: 10,
     elevation: 20,
   },
   progressTrack: {
