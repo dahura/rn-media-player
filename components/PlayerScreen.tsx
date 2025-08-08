@@ -244,7 +244,8 @@ export default function PlayerScreen() {
       {/* Top fade */}
       <LinearGradient
         pointerEvents="none"
-        colors={["#FFFFFF", "#FFFFFF00"]}
+        colors={["rgba(0,0,0,0.12)", "rgba(0,0,0,0.06)", "rgba(0,0,0,0)"]}
+        locations={[0, 0.5, 1]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={styles.topFade}
@@ -267,14 +268,10 @@ export default function PlayerScreen() {
         end={{ x: 0, y: 1 }}
         style={styles.bottomFade}
       />
-
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+      </View>
       <View style={styles.transport}>
-        <View style={styles.progressTrack}>
-          <View
-            style={[styles.progressFill, { width: `${progress * 100}%` }]}
-          />
-        </View>
-
         <View style={styles.transportTopRow}>
           <Text style={styles.timeText}>
             {formatMs(timeline[activeIndex]?.start ?? 0)}
@@ -339,7 +336,11 @@ function formatMs(ms: number) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  container: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    boxShadow: "0px 0px 10px 0px rgba(0, 0, 0, 0.1)",
+  },
   phraseContainer: { marginBottom: 16, width: "100%" },
   speaker: {
     marginBottom: 6,
@@ -407,7 +408,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 64,
+    height: 28,
     zIndex: 5,
   },
   bottomFade: {
