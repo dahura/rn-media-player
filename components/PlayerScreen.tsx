@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -32,6 +33,7 @@ export default function PlayerScreen() {
     stepToIndex,
     loadTimeline,
     isPlaying,
+    isFinished,
   } = usePlayerStore();
   const { play, pause, seekTo, rewindToPhraseStart, repeatLastPhrase } =
     useAudioController(require("@/assets/example_audio.mp3"));
@@ -81,6 +83,7 @@ export default function PlayerScreen() {
       // Restart current phrase from the beginning
       rewindToPhraseStart(curr.start);
       // Reset and restart text highlight immediately
+      cancelAnimation(progressSV);
       progressSV.value = 0;
       progressSV.value = withTiming(1, {
         duration: phraseDuration,
@@ -97,6 +100,7 @@ export default function PlayerScreen() {
         // Reset highlight and set measured width if known for the prev phrase
         const knownPrevWidth = measuredWidthByIndexRef.current[prevIndex];
         measuredWidthSV.value = knownPrevWidth ?? 0;
+        cancelAnimation(progressSV);
         progressSV.value = 0;
         play();
       }
@@ -113,7 +117,64 @@ export default function PlayerScreen() {
   };
 
   const totalMs = timeline.length ? timeline[timeline.length - 1].end : 1;
-  const progress = Math.max(0, Math.min(1, (currentMs ?? 0) / totalMs));
+  // const progress = Math.max(0, Math.min(1, (currentMs ?? 0) / totalMs));
+
+  // ====== Глобальный прогресс плеера: плавная линейная анимация ======
+  const trackWidthSV = useSharedValue(0);
+  const playbackProgressSV = useSharedValue(0);
+
+  const animatedProgressBarStyle = useAnimatedStyle(() => {
+    return {
+      width: trackWidthSV.value * playbackProgressSV.value,
+    };
+  });
+
+  // Обновляем прогресс при паузе/перемотке без анимации
+  useEffect(() => {
+    if (!isPlaying) {
+      const current =
+        totalMs > 0 ? Math.max(0, Math.min(1, (currentMs ?? 0) / totalMs)) : 0;
+      cancelAnimation(playbackProgressSV);
+      playbackProgressSV.value = current;
+    }
+  }, [isPlaying, currentMs, totalMs, playbackProgressSV]);
+
+  // Перезапускаем анимацию при старте воспроизведения
+  useEffect(() => {
+    if (!isPlaying) return;
+    const current =
+      totalMs > 0 ? Math.max(0, Math.min(1, (currentMs ?? 0) / totalMs)) : 0;
+    const remainingMs = Math.max(0, totalMs - (currentMs ?? 0));
+
+    // Устанавливаем текущую точку и анимируем до конца линейно
+    cancelAnimation(playbackProgressSV);
+    playbackProgressSV.value = current;
+    playbackProgressSV.value = withTiming(1, {
+      duration: Math.max(1, remainingMs),
+      easing: Easing.linear,
+    });
+  }, [isPlaying, totalMs, playbackProgressSV]);
+
+  // Детектируем крупные скачки позиции (seek) во время воспроизведения и перезапускаем анимацию
+  const prevMsRef = useRef<number>(0);
+  useEffect(() => {
+    const prev = prevMsRef.current;
+    const now = currentMs ?? 0;
+    prevMsRef.current = now;
+    if (!isPlaying) return;
+    if (Math.abs(now - prev) > 500) {
+      const current = totalMs > 0 ? Math.max(0, Math.min(1, now / totalMs)) : 0;
+      const remainingMs = Math.max(0, totalMs - now);
+      cancelAnimation(playbackProgressSV);
+      playbackProgressSV.value = current;
+      playbackProgressSV.value = withTiming(1, {
+        duration: Math.max(1, remainingMs),
+        easing: Easing.linear,
+      });
+    }
+  }, [currentMs, isPlaying, totalMs, playbackProgressSV]);
+
+  useEffect(() => {}, [currentMs]);
 
   // Сохраняем ширину текста и сразу устанавливаем для активной фразы
   const handleMeasureWidth = (
@@ -134,6 +195,7 @@ export default function PlayerScreen() {
   useEffect(() => {
     const curr = timeline[activeIndex];
     if (!curr) {
+      cancelAnimation(progressSV);
       progressSV.value = 0;
       measuredWidthSV.value = 0;
       return;
@@ -141,6 +203,7 @@ export default function PlayerScreen() {
 
     // Не анимируем и не подсвечиваем до старта плеера
     if (!isPlaying) {
+      cancelAnimation(progressSV);
       progressSV.value = 0;
       return;
     }
@@ -159,19 +222,13 @@ export default function PlayerScreen() {
     const startProgress = elapsed / phraseDuration;
     const remaining = Math.max(0, phraseDuration - elapsed);
 
+    cancelAnimation(progressSV);
     progressSV.value = startProgress;
     progressSV.value = withTiming(1, {
       duration: remaining,
       easing: Easing.linear,
     });
-  }, [
-    activeIndex,
-    isPlaying,
-    progressSV,
-    measuredWidthSV,
-    timeline,
-    currentMs,
-  ]);
+  }, [activeIndex, isPlaying, timeline]);
 
   const renderItem = ({
     item,
@@ -235,8 +292,21 @@ export default function PlayerScreen() {
     String(item.globalIndex);
 
   const onTogglePlay = () => {
-    if (isPlaying) pause();
-    else play();
+    if (isPlaying && !isFinished) {
+      pause();
+      return;
+    }
+
+    // If finished, reset to start before playing again
+    if (isFinished) {
+      stepToIndex(0);
+      seekTo(0);
+      cancelAnimation(playbackProgressSV);
+      playbackProgressSV.value = 0;
+      cancelAnimation(progressSV);
+      progressSV.value = 0;
+    }
+    play();
   };
 
   return (
@@ -269,11 +339,17 @@ export default function PlayerScreen() {
       />
 
       {/* Progress bar above transport (replaces border) */}
-      <View style={[styles.progressBarAbove, { height: 12 }]}>
-        <View
+      <View
+        style={[styles.progressBarAbove]}
+        onLayout={(e) => {
+          trackWidthSV.value = e.nativeEvent.layout.width;
+        }}
+      >
+        <Animated.View
           style={[
             styles.progressFill,
-            { width: `${progress * 100}%`, height: 12, borderRadius: 6 },
+            styles.progressFillRounded,
+            animatedProgressBarStyle,
           ]}
         />
       </View>
@@ -296,7 +372,7 @@ export default function PlayerScreen() {
           />
 
           <Pressable onPress={onTogglePlay} style={styles.playBtn} hitSlop={12}>
-            {isPlaying ? (
+            {isPlaying && !isFinished ? (
               <Ionicons name="pause" size={32} color={TEXT} />
             ) : (
               <Ionicons name="play" size={32} color={TEXT} />
@@ -346,153 +422,146 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    boxShadow: "0px 0px 10px 0px rgba(0, 0, 0, 0.1)",
   },
-  phraseContainer: { marginBottom: 16, width: "100%" },
-  speaker: {
-    marginBottom: 6,
-    fontWeight: "600",
-    color: "#8A8A8A",
-    fontSize: 13,
-    letterSpacing: -0.13,
-    fontFamily: "Outfit_600SemiBold",
-  },
-  leftSpeaker: { alignSelf: "flex-start", textAlign: "left" },
-  rightSpeaker: { alignSelf: "flex-end", textAlign: "right" },
-  activeSpeaker: { color: ACCENT },
-  bubble: {
-    maxWidth: 283,
-    width: 283,
-    minHeight: 52,
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#F2EEF6",
-    backgroundColor: "#FFF",
-  },
-  bubbleInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  activeBubble: {
-    width: 283,
-    minHeight: 52,
-    borderRadius: 10,
-    borderWidth: 1,
-    backgroundColor: "#E1E4FF",
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-  },
-  leftBubble: { alignSelf: "flex-start" },
-  rightBubble: { alignSelf: "flex-end" },
-  words: {
-    color: TEXT,
-    fontSize: 17,
-    lineHeight: 17,
-    letterSpacing: -0.17,
-    fontFamily: "Outfit_600SemiBold",
-    fontWeight: "600",
-    flex: 1,
-    flexWrap: "wrap",
-  },
-  accentText: { color: ACCENT },
-  progressTextWrapper: {
-    flex: 1,
-    position: "relative",
-  },
-  progressTextOverlay: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    overflow: "hidden",
-  },
-  // Gradient fades
   topFade: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 64,
-    zIndex: 5,
+    height: 80,
+    zIndex: 2,
   },
   bottomFade: {
     position: "absolute",
+    bottom: 120,
     left: 0,
     right: 0,
-    bottom: 88, // sit above transport area
-    height: 64,
-    zIndex: 5,
+    height: 80,
+    zIndex: 2,
   },
-  // Transport
+  phraseContainer: {
+    marginVertical: 8,
+    gap: 6,
+    width: "100%",
+  },
+  bubble: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    maxWidth: "80%",
+  },
+  leftBubble: {
+    backgroundColor: "#F0F0F0",
+    borderTopLeftRadius: 4,
+  },
+  rightBubble: {
+    backgroundColor: "#F7F7F7",
+    borderTopRightRadius: 4,
+  },
+  speaker: {
+    fontWeight: "600",
+    fontSize: 12,
+    color: TEXT,
+    opacity: 0.8,
+  },
+  leftSpeaker: {
+    alignSelf: "flex-start",
+    marginLeft: 6,
+  },
+  rightSpeaker: {
+    alignSelf: "flex-end",
+    marginRight: 6,
+  },
+  activeSpeaker: {
+    color: ACCENT,
+  },
+  bubbleInner: {
+    position: "relative",
+  },
+  progressTextWrapper: {
+    position: "relative",
+  },
+  progressTextOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    bottom: 0,
+    overflow: "hidden",
+  },
+  accentText: {
+    color: ACCENT,
+  },
+  words: {
+    fontSize: 18,
+    color: TEXT,
+  },
+  activeBubble: {
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+  },
   transport: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: 14,
-    paddingHorizontal: 16,
-    paddingBottom: 18,
-    backgroundColor: "#F6F6FF",
-    gap: 12,
-    zIndex: 10,
-    elevation: 20,
-  },
-  progressTrack: {
-    height: 6,
-    borderRadius: 6,
-    backgroundColor: "#E8E8FF",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: ACCENT,
+    backgroundColor: "#FFFFFF",
+    paddingTop: 16,
+    paddingBottom: 44,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#EAEAEA",
   },
   progressBarAbove: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 118,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#E8E8FF",
-    overflow: "hidden",
-    zIndex: 100,
+    bottom: 120,
+    height: 4,
+    backgroundColor: "#EAEAEA",
   },
-  transportTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  progressFill: {
+    height: "100%",
+    backgroundColor: ACCENT,
+  },
+  progressFillRounded: {
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
   },
   controlsRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 24,
-    paddingTop: 2,
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    paddingTop: 12,
   },
   iconBtn: {
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: "#ECEEFF",
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
   },
   playBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    backgroundColor: "#E8E9FF",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#D9DAFF",
+    borderWidth: 2,
+    borderColor: TEXT,
+  },
+  transportTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
   },
   timeText: {
-    width: 60,
-    textAlign: "center",
-    color: "#555",
-    fontVariant: ["tabular-nums"],
+    fontSize: 12,
+    color: TEXT,
+    opacity: 0.8,
   },
 });
