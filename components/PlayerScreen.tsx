@@ -12,8 +12,10 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 
 import transcript from "@/assets/transcript.json";
@@ -35,20 +37,26 @@ export default function PlayerScreen() {
 
   const firstSpeakerName = transcript.speakers?.[0]?.name ?? "";
 
-  // Animated overlay driven by progress and measured width (no artificial delay)
-  const measuredWidthByIndexRef = React.useRef<Record<number, number>>({});
+  // Храним измеренную ширину текста для каждой фразы
+  const measuredWidthByIndexRef = useRef<Record<number, number>>({});
   const measuredWidthSV = useSharedValue(0);
-  const progressSV = useSharedValue(0);
-  const animatedOverlayStyle = useAnimatedStyle(() => ({
-    width: measuredWidthSV.value * progressSV.value,
-  }));
 
-  // Build timeline once
+  // Прогресс от 0 до 1 для активной фразы
+  const progressSV = useSharedValue(0);
+
+  // Анимированный стиль подсветки
+  const animatedOverlayStyle = useAnimatedStyle(() => {
+    return {
+      width: measuredWidthSV.value * progressSV.value,
+    };
+  });
+
+  // Построить таймлайн при загрузке
   useEffect(() => {
     loadTimeline(transcript.speakers, transcript.pause);
   }, [loadTimeline]);
 
-  // Scroll to active item
+  // Прокрутка к активной фразе
   const listRef = useRef<FlatList>(null);
   useEffect(() => {
     if (!timeline.length) return;
@@ -64,16 +72,31 @@ export default function PlayerScreen() {
     if (!timeline.length) return;
     const curr = timeline[activeIndex];
     if (!curr) return;
+
     const thresholdMs = 300;
+    const phraseDuration = Math.max(1, curr.end - curr.start);
+
     if ((currentMs ?? 0) > curr.start + thresholdMs) {
-      // Restart current phrase and play
+      // Restart current phrase from the beginning
       rewindToPhraseStart(curr.start);
+      // Reset and restart text highlight immediately
+      progressSV.value = 0;
+      progressSV.value = withTiming(1, {
+        duration: phraseDuration,
+        easing: Easing.linear,
+      });
       play();
     } else {
-      // Jump to previous phrase start (or stay at first) and play
-      const prev = timeline[Math.max(0, activeIndex - 1)];
+      // Jump to previous phrase start
+      const prevIndex = Math.max(0, activeIndex - 1);
+      const prev = timeline[prevIndex];
       if (prev) {
-        rewindToPhraseStart(prev.start);
+        stepToIndex(prev.globalIndex);
+        seekTo(prev.start);
+        // Reset highlight and set measured width if known for the prev phrase
+        const knownPrevWidth = measuredWidthByIndexRef.current[prevIndex];
+        measuredWidthSV.value = knownPrevWidth ?? 0;
+        progressSV.value = 0;
         play();
       }
     }
@@ -88,12 +111,10 @@ export default function PlayerScreen() {
     }
   };
 
-  // repeat control moved into each bubble
-
   const totalMs = timeline.length ? timeline[timeline.length - 1].end : 1;
   const progress = Math.max(0, Math.min(1, (currentMs ?? 0) / totalMs));
 
-  // Measure and store text width per phrase
+  // Сохраняем ширину текста и сразу устанавливаем для активной фразы
   const handleMeasureWidth = (
     index: number,
     width: number,
@@ -108,7 +129,7 @@ export default function PlayerScreen() {
     }
   };
 
-  // Drive progress shared value from audio clock
+  // При смене активной фразы запускаем линейную анимацию прогресса
   useEffect(() => {
     const curr = timeline[activeIndex];
     if (!curr) {
@@ -116,19 +137,21 @@ export default function PlayerScreen() {
       measuredWidthSV.value = 0;
       return;
     }
-    const duration = Math.max(1, curr.end - curr.start);
-    const elapsed = Math.max(
-      0,
-      Math.min(duration, (currentMs ?? 0) - curr.start)
-    );
-    progressSV.value = elapsed / duration;
-  }, [activeIndex, currentMs, timeline, progressSV, measuredWidthSV]);
 
-  // When active index changes, immediately set measured width if known
-  useEffect(() => {
-    const known = measuredWidthByIndexRef.current[activeIndex];
-    measuredWidthSV.value = known ?? 0;
-  }, [activeIndex, measuredWidthSV]);
+    const phraseDuration = Math.max(1, curr.end - curr.start);
+    const knownWidth = measuredWidthByIndexRef.current[activeIndex];
+
+    if (knownWidth != null) {
+      measuredWidthSV.value = knownWidth;
+    }
+
+    // сброс и линейная анимация до конца
+    progressSV.value = 0;
+    progressSV.value = withTiming(1, {
+      duration: phraseDuration,
+      easing: Easing.linear,
+    });
+  }, [activeIndex, timeline, progressSV, measuredWidthSV]);
 
   const renderItem = ({
     item,
@@ -136,12 +159,6 @@ export default function PlayerScreen() {
   }: ListRenderItemInfo<(typeof timeline)[number]>) => {
     const isActive = index === activeIndex;
     const isInitiator = item.phrase.speaker === firstSpeakerName;
-    const phraseDuration = Math.max(1, item.end - item.start);
-    const phraseElapsed = Math.max(
-      0,
-      Math.min(phraseDuration, (currentMs ?? 0) - item.start)
-    );
-    const phraseProgress = isActive ? phraseElapsed / phraseDuration : 0;
 
     return (
       <View
@@ -188,9 +205,6 @@ export default function PlayerScreen() {
                 </Animated.View>
               )}
             </View>
-            {/* <View style={styles.repeatIcon} pointerEvents="none">
-              <Ionicons name="volume-high" size={18} color={TEXT} />
-            </View> */}
           </View>
         </Pressable>
       </View>
@@ -288,7 +302,6 @@ function formatMs(ms: number) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF" },
-  // Chat
   phraseContainer: { marginBottom: 16, width: "100%" },
   speaker: {
     marginBottom: 6,
@@ -360,7 +373,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Transport
   transport: {
     position: "absolute",
     left: 0,
@@ -413,20 +425,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#D9DAFF",
-  },
-  pauseIcon: {
-    width: 32,
-    height: 32,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pauseBar: {
-    width: 6,
-    height: 22,
-    borderRadius: 2,
-    backgroundColor: TEXT,
-    marginHorizontal: 3,
   },
   timeText: {
     width: 60,
