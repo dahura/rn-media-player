@@ -129,7 +129,7 @@ export default function PlayerScreen() {
     }
   };
 
-  // При смене активной фразы запускаем линейную анимацию прогресса
+  // При смене активной фразы или запуске воспроизведения стартуем синхронную анимацию
   useEffect(() => {
     const curr = timeline[activeIndex];
     if (!curr) {
@@ -138,20 +138,39 @@ export default function PlayerScreen() {
       return;
     }
 
+    // Не анимируем и не подсвечиваем до старта плеера
+    if (!isPlaying) {
+      progressSV.value = 0;
+      return;
+    }
+
     const phraseDuration = Math.max(1, curr.end - curr.start);
     const knownWidth = measuredWidthByIndexRef.current[activeIndex];
-
     if (knownWidth != null) {
       measuredWidthSV.value = knownWidth;
     }
 
-    // сброс и линейная анимация до конца
-    progressSV.value = 0;
+    // Вычисляем текущий прогресс и оставшуюся длительность, чтобы не было рассинхрона
+    const elapsed = Math.max(
+      0,
+      Math.min(phraseDuration, (currentMs ?? 0) - curr.start)
+    );
+    const startProgress = elapsed / phraseDuration;
+    const remaining = Math.max(0, phraseDuration - elapsed);
+
+    progressSV.value = startProgress;
     progressSV.value = withTiming(1, {
-      duration: phraseDuration,
+      duration: remaining,
       easing: Easing.linear,
     });
-  }, [activeIndex, timeline, progressSV, measuredWidthSV]);
+  }, [
+    activeIndex,
+    isPlaying,
+    progressSV,
+    measuredWidthSV,
+    timeline,
+    currentMs,
+  ]);
 
   const renderItem = ({
     item,
