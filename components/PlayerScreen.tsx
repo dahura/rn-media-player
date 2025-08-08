@@ -269,8 +269,13 @@ export default function PlayerScreen() {
       />
 
       {/* Progress bar above transport (replaces border) */}
-      <View style={styles.progressBarAbove}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+      <View style={[styles.progressBarAbove, { height: 12 }]}>
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${progress * 100}%`, height: 12, borderRadius: 6 },
+          ]}
+        />
       </View>
 
       <View style={styles.transport}>
@@ -449,12 +454,12 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 88,
-    height: 6,
+    bottom: 118,
+    height: 12,
     borderRadius: 6,
     backgroundColor: "#E8E8FF",
     overflow: "hidden",
-    zIndex: 6,
+    zIndex: 100,
   },
   transportTopRow: {
     flexDirection: "row",
