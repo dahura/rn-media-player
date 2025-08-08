@@ -39,7 +39,13 @@ export function PlayerControls({
           size={26}
         />
 
-        <Pressable onPress={onTogglePlay} style={styles.playBtn} hitSlop={12}>
+        <Pressable
+          onPress={onTogglePlay}
+          style={styles.playBtn}
+          hitSlop={12}
+          accessibilityLabel="Toggle Play"
+          accessibilityRole="button"
+        >
           {isPlaying && !isFinished ? (
             <Ionicons name="pause" size={32} color={Colors.tokens.text} />
           ) : (

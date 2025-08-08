@@ -21,6 +21,7 @@ export function IconButton({
     <Pressable
       onPress={onPress}
       accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
       style={[
         {
           padding: 12,
