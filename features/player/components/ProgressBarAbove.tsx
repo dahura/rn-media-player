@@ -11,7 +11,13 @@ export function ProgressBarAbove({
   onLayout: (e: any) => void;
 }) {
   return (
-    <View style={styles.progressBarAbove} onLayout={onLayout}>
+    <View
+      style={styles.progressBarAbove}
+      onLayout={onLayout}
+      testID="progress-bar-above"
+      accessibilityRole="progressbar"
+      accessibilityLabel="Playback progress"
+    >
       <Animated.View
         style={[styles.progressFill, styles.progressFillRounded, animatedStyle]}
       />
